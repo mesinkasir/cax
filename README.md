@@ -2,7 +2,7 @@
 
 A Starter Project CAX SSG
 
-![C Static Site Generator](cax-starter.jpg)
+![C Static Site Generator](cax-starter.webp)
 
 **CAX SSG** is a high-performance, zero-dependency static site generator written in pure C. Inspired by the developer experience of Eleventy and Jekyll, but engineered for raw C speed.
 
