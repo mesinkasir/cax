@@ -112,7 +112,7 @@ void cax_builder_init_project(void) {
     cax_create_directory("templates/partials");
     cax_create_directory("public/css");
     cax_create_directory("site");
-    cax_write_file("_data/config.json", "{\n \"site\": {\n \"title\": \"CAX Enterprise SSG\",\n \"description\": \"High performance Static Site Generator in C\",\n \"url\": \"http://localhost:8080\",\n \"author\": \"Axcora\"\n }\n}\n");
+    cax_write_file("_data/metadata.json", "{\n \"site\": {\n \"title\": \"CAX Enterprise SSG\",\n \"description\": \"High performance Static Site Generator in C\",\n \"url\": \"http://localhost:8080\",\n \"author\": \"Axcora\"\n }\n}\n");
     cax_write_file("_data/nav.json","{\n \"nav1_name\": \"Home\",\n \"nav1_url\": \"/\",\n \"nav2_name\": \"Posts\",\n \"nav2_url\": \"/posts/\",\n \"nav3_name\": \"About\",\n \"nav3_url\": \"/about/\"\n}\n");
     cax_write_file("templates/partials/header.cax","<header class=\"py-4 border-bottom bg-white shadow-sm mb-4\">\n <div class=\"container d-flex justify-content-between align-items-center\">\n <a class=\"navbar-brand fw-bold text-dark text-decoration-none fs-4\" href=\"/\">{{ title }}</a>\n <nav class=\"nav\">\n <a class=\"nav-link text-secondary fw-medium px-3\" href=\"{{ nav1_url }}\">{{ nav1_name }}</a>\n <a class=\"nav-link text-secondary fw-medium px-3\" href=\"{{ nav2_url }}\">{{ nav2_name }}</a>\n <a class=\"nav-link text-secondary fw-medium px-3\" href=\"{{ nav3_url }}\">{{ nav3_name }}</a>\n </nav>\n </div>\n</header>\n");
     cax_write_file("templates/partials/footer.cax","<footer class=\"text-center py-4 text-muted\">\n <small>&copy; 2026 {{ author }}. Built with CAX SSG.</small>\n</footer>\n");
@@ -346,6 +346,16 @@ void cax_builder_run(void) {
                 process_collection_dir(sub_path, entry->d_name, coll_array);
                 cax_object_set_pointer(collections_obj, entry->d_name, coll_array);
                 cax_object_set_pointer(global_data, entry->d_name, coll_array);
+            }
+        }
+        rewinddir(content_dir);
+        while ((entry = readdir(content_dir))!= NULL) {
+            if (entry->d_name[0] == '.') continue;
+            char sub_path[8192];
+            snprintf(sub_path, sizeof(sub_path), "content/%s", entry->d_name);
+            if (cax_is_directory(sub_path)) {
+                CAXArray *coll_array = (CAXArray*)cax_object_get_pointer(collections_obj, entry->d_name);
+                if (!coll_array) continue;
                 render_collection_items(sub_path, entry->d_name, coll_array, global_data);
                 for (int i = 0; i < coll_array->count; i++) cax_array_add(all_collections_master, coll_array->items[i]);
                 char out_sub_dir[512];

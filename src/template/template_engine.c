@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 static void trim_inplace(char *s){
     if(!s) return;
@@ -97,11 +98,16 @@ static CAXArray* resolve_array_path(CAXObject *ctx, const char *path){
 }
 static int parse_limit(const char *raw){
     if(!raw) return -1;
-    char *p=strchr(raw,'|'); if(!p) return -1;
-    p=strstr(p,"limit"); if(!p) return -1;
-    p+=5; while(*p==' '||*p==':'||*p=='('||*p==')') p++;
-    char num[16]={0}; int i=0;
-    while(*p>='0' && *p<='9' && i<15) num[i++]=*p++;
+    const char *p = strchr(raw, '|');
+    if(!p) return -1;
+    p++;
+    while(*p && isspace((unsigned char)*p)) p++;
+    if(strncmp(p, "limit", 5) != 0) return -1;
+    p += 5;
+    while(*p && (isspace((unsigned char)*p) || *p == ':' || *p == '(')) p++;
+    char num[16] = {0}; int i = 0;
+    while(*p >= '0' && *p <= '9' && i < 15) num[i++] = *p++;
+    if(i == 0) return -1;
     return atoi(num);
 }
 static int is_truthy(CAXObject *ctx, const char *cond){
