@@ -1,0 +1,25 @@
+---
+layout: default.cax
+---
+    <main class="container">
+        <div class="row">
+            <div class="col-lg-12 text-center p-5">
+                <span class="text-uppercase text-muted
+                 fw-bold small">Filter Tag</span>
+                    <h1 class="mt-1"><a href="{{url}}">#{{ tag_name }}</a></h1>
+                </div>
+                <div class="row gap-3">
+                    {% for post in posts %}
+                    <div class="col-lg-4 col-12 card border-0 gap-3 shadow-sm rounded-4 p-4 bg-white">
+                         {% if iamge %}<a href="{{ post.url }}"><img class="img-fluid" width="100%" height="100%" alt="{{post.title}}"
+                    src="{{post.image}}" loading="laxy"/></a>{% endif %}
+                        <h2 class="h4 fw-bold">
+                            <a href="{{ post.url }}">{{ post.title }}</a>
+                        </h2>
+                        <p class="text-muted mb-3">{{ post.description }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </main>

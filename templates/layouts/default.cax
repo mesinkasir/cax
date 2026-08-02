@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% include seo.cax %}
+{% include style.cax %}
+</head>
+<body>
+{% include nav.cax %}
+{{ content }}
+{% include footer.cax %}
+{% include scripts.cax %}
+</body>
+</html>

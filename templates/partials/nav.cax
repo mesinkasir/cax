@@ -1,0 +1,21 @@
+<nav class="navbar">
+  <div class="container mb-2">
+    <a class="navbar-brand" href="{{config.url}}">
+      ✦ {{config.navbar_title}}
+    </a>
+    <button class="navbar-toggler" type="button" onclick="document.getElementById('navCollapse').classList.toggle('show')">
+      ☰
+    </button>
+    <div class="navbar-collapse" id="navCollapse">
+      <ul class="navbar-nav">
+      {% for nav in config.navbar_list %}
+        <li class="nav-item"><a class="nav-link" href="{{ nav.url }}">{{ nav.name }}</a></li>
+        {% endfor %}
+        <li class="nav-item">
+          <button class="theme-toggle" 
+          onclick="toggleTheme()" id="themeBtn">🌙</button>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>

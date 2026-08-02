@@ -1,0 +1,20 @@
+<div class="home-wrapper">
+  <div class="home-content">
+    <span class="hero-badge">✦ {{home.info}}</span>
+    <h1 class="hero-title"><a href="{{url}}">
+      {{home.title}}<br/>{{home.title2}}
+    </a></h1>
+    
+    <p class="hero-subtitle">
+      {{home.description}}<br/>{{home.description2}}
+    </p>
+    
+    <p class="hero-description">
+      {{home.text}}<br/>{{home.text2}}
+    </p>
+    
+    <a href="{{home.button.url}}" class="cta-link">
+      {{home.button.text}} <span class="cta-arrow">→</span>
+    </a>
+  </div>
+</div>

@@ -1,0 +1,31 @@
+name: Build CAX SSG
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup GCC
+        run: sudo apt-get update && sudo apt-get install -y gcc make
+
+      - name: Build CAX SSG
+        run: |
+          make linux
+          chmod +x cax
+
+      - name: Build Site
+        run: ./cax build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: ./site

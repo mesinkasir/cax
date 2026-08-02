@@ -1,0 +1,12 @@
+<footer class="footer">
+  <div class="container" style="max-width: 820px;">
+    <p class="mb-1">
+      &copy; {{config.title}} — built with <a href="https://cax.axcora.com">CAX</a> Feat <strong><a href="https://ssg.axcora.com">Axcora CSS</a></strong>
+    </p>
+    <div>
+    {% for f in config.footer %}
+      <a href="{{f.url}}">{{ f.name }}</a>
+    {% endfor %}
+    </div>
+  </div>
+</footer>

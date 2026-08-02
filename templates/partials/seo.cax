@@ -1,0 +1,51 @@
+<meta name="google-site-verification" content="fJTzwsNcz2AtRxQpJZzU7db7TLPdR_lKSAXfyWDtHB4">
+<meta name="google-site-verification" content="Xi3WpckDbMBvm1pdlc5XukNoA9uWDmnExIiOeaTOxq0"> 
+ <title>{{ title or config.title }}</title>
+    <meta name="title" content="{{ title or config.title }}">
+    <meta name="description" content="{{ description or config.description }}">
+    <meta name="author" content="{{ author or config.author }}">
+    <meta name="robots" content="index, follow">
+    <link rel="icon" type="image/png" href="{{ config.logo }}">
+    <link rel="apple-touch-icon" href="{{ config.logo }}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ config.url }}{{ url }}">
+    <meta property="og:title" content="{{ title or config.title }}">
+    <meta property="og:description" content="{{ description or config.description }}">
+    <meta property="og:image" content="{{ config.url }}{{ config.image }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="{{ config.url }}">
+    <meta name="twitter:title" content="{{ title or config.title }}">
+    <meta name="twitter:description" content="{{ description or config.description }}">
+    <meta name="twitter:image" content="{{ config.url }}{{ config.image }}">
+<link rel="canonical" href="{{ config.url }}{{ url }}">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/axcora-css@1.0.1/axcora.min.css" />
+<meta name="generator" content="CAX SSG - Static Site Generator in C">
+<script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "url": "{{ config.url }}{{ url }}",
+        "name": "{{ title or config.title }}",
+        "description": "{{ description or config.description }}",
+        "author": {
+            "@type": "Person",
+            "name": "{{ config.author }}"
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "{{ config.author }}",
+            "logo": {
+                "@type": "ImageObject",
+                "url": "{{ config.url }}{{ config.logo }}"
+            }
+        },
+        "image": {
+            "@type": "ImageObject",
+            "url": "{{ config.url }}{{ config.image }}"
+        },
+        "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "{{ config.url }}{{ url }}"
+        }
+    }
+    </script>

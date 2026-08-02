@@ -1,0 +1,4 @@
+---
+layout: default.cax
+---
+{% include home.cax %}

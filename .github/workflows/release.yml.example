@@ -1,0 +1,59 @@
+name: Release CAX SSG
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Linux binary
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc make
+          make linux
+      - name: Upload Linux binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./cax
+          asset_name: cax-linux-amd64
+          asset_content_type: application/octet-stream
+
+  build-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Windows binary
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 make
+          make windows
+      - name: Upload Windows binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./cax.exe
+          asset_name: cax-windows-amd64.exe
+          asset_content_type: application/octet-stream
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS binary
+        run: |
+          make linux
+      - name: Upload macOS binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./cax
+          asset_name: cax-darwin-amd64
+          asset_content_type: application/octet-stream
