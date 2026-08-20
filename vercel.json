@@ -1,0 +1,6 @@
+{
+  "installCommand": "make linux",
+  "buildCommand": "./cax build",
+  "outputDirectory": "site",
+  "framework": null
+}
