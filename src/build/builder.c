@@ -18,10 +18,14 @@
 #include <dirent.h>
 #include <time.h>
 #include <sys/stat.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #endif
 
+// ================= HELPER UMUM =================
 static char *clean_trim(char *str) {
     if (!str) return NULL;
     while (isspace((unsigned char)*str)) str++;
@@ -64,6 +68,233 @@ static time_t scan_dir(const char *dir){
     closedir(d);
     return max;
 }
+
+// ================= HELPER FEED FIX =================
+static void json_escape(const char *src, char *dst, size_t dst_size){
+    size_t j=0;
+    if(!src){ dst[0]='\0'; return; }
+    for(size_t i=0; src[i] && j+6 < dst_size; i++){
+        unsigned char c = src[i];
+        if(c=='"'){ dst[j++]='\\'; dst[j++]='"'; }
+        else if(c=='\\'){ dst[j++]='\\'; dst[j++]='\\'; }
+        else if(c=='\n'){ dst[j++]='\\'; dst[j++]='n'; }
+        else if(c=='\r'){ dst[j++]='\\'; dst[j++]='r'; }
+        else if(c=='\t'){ dst[j++]='\\'; dst[j++]='t'; }
+        else if(c < 0x20){
+            // control char -> \u00XX
+            j+= snprintf(dst+j, dst_size-j, "\\u%04x", c);
+        } else {
+            dst[j++]=c;
+        }
+    }
+    dst[j]='\0';
+}
+
+static void xml_escape_url(const char *src, char *dst, size_t dst_size){
+    size_t j=0;
+    if(!src){ dst[0]='\0'; return; }
+    for(size_t i=0; src[i] && j+10 < dst_size; i++){
+        if(src[i]=='&'){ if(j+5 < dst_size){ strcpy(dst+j,"&amp;"); j+=5; } }
+        else if(src[i]=='<'){ if(j+4 < dst_size){ strcpy(dst+j,"&lt;"); j+=4; } }
+        else if(src[i]=='>'){ if(j+4 < dst_size){ strcpy(dst+j,"&gt;"); j+=4; } }
+        else if(src[i]=='"'){ if(j+6 < dst_size){ strcpy(dst+j,"&quot;"); j+=6; } }
+        else if(src[i]=='\''){ if(j+6 < dst_size){ strcpy(dst+j,"&apos;"); j+=6; } }
+        else dst[j++]=src[i];
+    }
+    dst[j]='\0';
+}
+
+// CDATA aman: ganti ]]> jadi ]]><![CDATA[>
+static void write_cdata(FILE *f, const char *s){
+    if(!s) return;
+    for(size_t i=0; s[i]; ){
+        if(s[i]==']' && s[i+1]==']' && s[i+2]=='>'){
+            fputs("]]]]><![CDATA[>", f);
+            i+=3;
+        } else {
+            fputc(s[i], f);
+            i++;
+        }
+    }
+}
+
+static const char* get_site_url(CAXObject *global_data){
+    const char *url = cax_object_get_string(global_data, "url");
+    if(!url) url = cax_object_get_string(global_data, "site_url");
+    if(!url){
+        CAXObject *site = cax_object_get_pointer(global_data, "site");
+        if(site) url = cax_object_get_string(site, "url");
+        if(!url) url = cax_object_get_pointer(global_data, "metadata") ? NULL : NULL;
+    }
+    // fallback dari data_manager structure
+    CAXObject *meta = cax_object_get_pointer(global_data, "metadata");
+    if(!url && meta){
+        CAXObject *site = cax_object_get_pointer(meta, "site");
+        if(site) url = cax_object_get_string(site, "url");
+    }
+    return url ? url : "http://localhost:8080";
+}
+static const char* get_site_title(CAXObject *global_data){
+    const char *t = cax_object_get_string(global_data, "title");
+    if(!t) t = cax_object_get_string(global_data, "site_title");
+    if(!t){
+        CAXObject *site = cax_object_get_pointer(global_data, "site");
+        if(site) t = cax_object_get_string(site, "title");
+    }
+    CAXObject *meta = cax_object_get_pointer(global_data, "metadata");
+    if(!t && meta){
+        CAXObject *site = cax_object_get_pointer(meta, "site");
+        if(site) t = cax_object_get_string(site, "title");
+    }
+    return t ? t : "CAX SSG";
+}
+static const char* get_site_desc(CAXObject *global_data){
+    const char *d = cax_object_get_string(global_data, "description");
+    if(!d){
+        CAXObject *site = cax_object_get_pointer(global_data, "site");
+        if(site) d = cax_object_get_string(site, "description");
+    }
+    CAXObject *meta = cax_object_get_pointer(global_data, "metadata");
+    if(!d && meta){
+        CAXObject *site = cax_object_get_pointer(meta, "site");
+        if(site) d = cax_object_get_string(site, "description");
+    }
+    return d ? d : "Static site generated with CAX";
+}
+
+static void cax_generate_feeds(CAXArray *all_items, CAXObject *global_data){
+    if(!all_items || all_items->count==0) return;
+
+    const char *site_title_raw = get_site_title(global_data);
+    const char *site_url_raw = get_site_url(global_data);
+    const char *site_desc_raw = get_site_desc(global_data);
+
+    char site_url[1024];
+    snprintf(site_url, sizeof(site_url), "%s", site_url_raw);
+    size_t sl = strlen(site_url);
+    if(sl>0 && site_url[sl-1]=='/') site_url[sl-1]='\0';
+
+    // waktu build
+    time_t now = time(NULL);
+    struct tm *gmt = gmtime(&now);
+    char now_rfc822[128];
+    char now_iso[64];
+    strftime(now_rfc822, sizeof(now_rfc822), "%a, %d %b %Y %H:%M:%S GMT", gmt);
+    strftime(now_iso, sizeof(now_iso), "%Y-%m-%dT%H:%M:%SZ", gmt);
+
+    // ============ RSS / feed.xml ============
+    FILE *rss = fopen("site/feed.xml", "w");
+    if(!rss) rss = fopen("site/rss.xml","w");
+    else {
+        // tulis 2 file dengan konten sama, kita akan copy nanti
+    }
+    if(!rss) return;
+
+    // header
+    fprintf(rss, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    fprintf(rss, "<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n<channel>\n");
+    fprintf(rss, "<title><![CDATA["); write_cdata(rss, site_title_raw); fprintf(rss, "]]></title>\n");
+    fprintf(rss, "<link>%s/</link>\n", site_url);
+    fprintf(rss, "<description><![CDATA["); write_cdata(rss, site_desc_raw); fprintf(rss, "]]></description>\n");
+    fprintf(rss, "<language>en-us</language>\n");
+    fprintf(rss, "<lastBuildDate>%s</lastBuildDate>\n", now_rfc822);
+    fprintf(rss, "<generator>CAX SSG</generator>\n");
+    fprintf(rss, "<atom:link href=\"%s/feed.xml\" rel=\"self\" type=\"application/rss+xml\" />\n", site_url);
+
+    int rss_count=0;
+    for(int i=0; i<all_items->count && rss_count<100; i++){
+        CAXObject *it = all_items->items[i];
+        if(!it) continue;
+        const char *t = cax_object_get_string(it, "title");
+        const char *u = cax_object_get_string(it, "url");
+        const char *d = cax_object_get_string(it, "description");
+        if(!t || !u) continue;
+        if(strstr(u,"/404")) continue;
+        if(strcasecmp(t,"404")==0) continue;
+        if(strlen(t)<3) continue;
+
+        char abs_url[2048];
+        if(u[0]=='h') snprintf(abs_url,sizeof(abs_url),"%s",u);
+        else snprintf(abs_url,sizeof(abs_url),"%s%s",site_url,u);
+
+        char esc_url[4096];
+        xml_escape_url(abs_url, esc_url, sizeof(esc_url));
+
+        const char *pubDate = cax_object_get_string(it, "date");
+        if(!pubDate) pubDate = cax_object_get_string(it, "pubDate");
+        if(!pubDate) pubDate = now_rfc822;
+
+        fprintf(rss, "<item>\n");
+        fprintf(rss, "<title><![CDATA["); write_cdata(rss, t); fprintf(rss, "]]></title>\n");
+        fprintf(rss, "<link>%s</link>\n", esc_url);
+        fprintf(rss, "<guid isPermaLink=\"true\">%s</guid>\n", esc_url);
+        fprintf(rss, "<description><![CDATA["); write_cdata(rss, d ? d : t); fprintf(rss, "]]></description>\n");
+        fprintf(rss, "<pubDate>%s</pubDate>\n", pubDate);
+        fprintf(rss, "</item>\n");
+        rss_count++;
+    }
+    fprintf(rss, "</channel>\n</rss>\n");
+    fclose(rss);
+
+    // copy feed.xml ke rss.xml biar dua-duanya ada
+    {
+        char *content = cax_read_file("site/feed.xml");
+        if(!content) content = cax_read_file("site/rss.xml");
+        if(content){
+            cax_write_file("site/feed.xml", content);
+            cax_write_file("site/rss.xml", content);
+            free(content);
+        }
+    }
+
+    // ============ JSON Feed 1.1 ============
+    FILE *jf = fopen("site/feed.json","w");
+    if(!jf) return;
+    char esc_title[2048], esc_desc[4096];
+    json_escape(site_title_raw, esc_title, sizeof(esc_title));
+    json_escape(site_desc_raw, esc_desc, sizeof(esc_desc));
+
+    fprintf(jf, "{\n");
+    fprintf(jf, "  \"version\": \"https://jsonfeed.org/version/1.1\",\n");
+    fprintf(jf, "  \"title\": \"%s\",\n", esc_title);
+    fprintf(jf, "  \"home_page_url\": \"%s/\",\n", site_url);
+    fprintf(jf, "  \"feed_url\": \"%s/feed.json\",\n", site_url);
+    fprintf(jf, "  \"description\": \"%s\",\n", esc_desc);
+    fprintf(jf, "  \"items\": [\n");
+
+    int json_count=0;
+    for(int i=0; i<all_items->count && json_count<100; i++){
+        CAXObject *it = all_items->items[i];
+        if(!it) continue;
+        const char *t = cax_object_get_string(it, "title");
+        const char *u = cax_object_get_string(it, "url");
+        const char *d = cax_object_get_string(it, "description");
+        if(!t || !u) continue;
+        if(strstr(u,"/404")) continue;
+        if(strcasecmp(t,"404")==0) continue;
+        if(strlen(t)<3) continue;
+
+        char abs_url[2048];
+        if(u[0]=='h') snprintf(abs_url,sizeof(abs_url),"%s",u);
+        else snprintf(abs_url,sizeof(abs_url),"%s%s",site_url,u);
+
+        const char *date_iso = cax_object_get_string(it, "date");
+        if(!date_iso) date_iso = now_iso;
+
+        char j_t[2048], j_u[4096], j_d[4096], j_id[4096];
+        json_escape(t, j_t, sizeof(j_t));
+        json_escape(abs_url, j_u, sizeof(j_u));
+        json_escape(abs_url, j_id, sizeof(j_id));
+        json_escape(d ? d : t, j_d, sizeof(j_d));
+
+        if(json_count>0) fprintf(jf, ",\n");
+        fprintf(jf, "    {\"id\": \"%s\", \"url\": \"%s\", \"title\": \"%s\", \"content_text\": \"%s\", \"date_published\": \"%s\"}", j_id, j_u, j_t, j_d, date_iso);
+        json_count++;
+    }
+    fprintf(jf, "\n  ]\n}\n");
+    fclose(jf);
+}
+
 static void inject_livereload_script(){
     cax_write_file("site/__cax_live.js","(function(){let h=null;setInterval(async()=>{try{let t=await fetch(location.href,{cache:'no-store'}).then(r=>r.text());if(h===null)h=t.length;else if(h!=t.length)location.reload();}catch(e){}},1000);})();");
 #ifdef _WIN32
@@ -448,6 +679,10 @@ void cax_builder_run(void) {
     }
     cax_tags_generate(all_collections_master, "site", global_data);
     cax_sitemap_generate_full(all_collections_master, global_data, "site", pagination_controllers);
+
+    // ===== FIX FEED UNTUK OPEN SOURCE =====
+    cax_generate_feeds(all_collections_master, global_data);
+
     for (int i = 0; i < all_collections_master->count; i++) if (all_collections_master->items[i]) cax_object_free(all_collections_master->items[i]);
     cax_array_free(all_collections_master);
     cax_object_free(global_data);
@@ -471,7 +706,7 @@ void cax_builder_run(void) {
 }
 
 void cax_builder_start_server(void) {
-    cax_builder_run(); // BERSIH - GAK ADA LIVE RELOAD
+    cax_builder_run();
 #ifdef _WIN32
     printf("\n [SERVER] http://localhost:8080\n");
     printf(" [INFO] Serving site/ folder\n\n");
@@ -526,7 +761,7 @@ void cax_builder_start_with_watch(void){
         if(c!=lc||t!=lt||d!=ld||p!=lp){
             printf(" [change] rebuilding...\n");
             cax_builder_run();
-            inject_livereload_script(); // <--- REBUILD + INJECT LAGI!
+            inject_livereload_script();
             printf(" ✔ rebuilt\n"); lc=c; lt=t; ld=d; lp=p;
         }
     }
