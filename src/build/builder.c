@@ -25,7 +25,6 @@
 #include <windows.h>
 #endif
 
-// ================= HELPER UMUM =================
 static char *clean_trim(char *str) {
     if (!str) return NULL;
     while (isspace((unsigned char)*str)) str++;
@@ -69,7 +68,30 @@ static time_t scan_dir(const char *dir){
     return max;
 }
 
-// ================= HELPER FEED FIX =================
+static time_t parse_date_str(const char *s) {
+    if (!s || !*s) return 0;
+    int y=0,m=0,d=0,hh=0,mm=0,ss=0;
+    int n = sscanf(s, "%d-%d-%d%*c%d:%d:%d", &y, &m, &d, &hh, &mm, &ss);
+    if (n < 3) return 0;
+    struct tm tm; memset(&tm, 0, sizeof(tm));
+    tm.tm_year = y-1900; tm.tm_mon = m-1; tm.tm_mday = d;
+    tm.tm_hour = hh; tm.tm_min = mm; tm.tm_sec = ss; tm.tm_isdst = -1;
+    return mktime(&tm);
+}
+static int cmp_by_date_desc(const void *a, const void *b) {
+    CAXObject *oa = *(CAXObject**)a;
+    CAXObject *ob = *(CAXObject**)b;
+    if (!oa) return 1;
+    if (!ob) return -1;
+    time_t ta = parse_date_str(cax_object_get_string(oa, "date"));
+    time_t tb = parse_date_str(cax_object_get_string(ob, "date"));
+    if (ta == 0) { const char *m = cax_object_get_string(oa, "mtime"); if (m) ta = (time_t)atoll(m); }
+    if (tb == 0) { const char *m = cax_object_get_string(ob, "mtime"); if (m) tb = (time_t)atoll(m); }
+    if (ta == 0 && tb != 0) return 1;
+    if (tb == 0 && ta != 0) return -1;
+    return (tb > ta) - (tb < ta);
+}
+
 static void json_escape(const char *src, char *dst, size_t dst_size){
     size_t j=0;
     if(!src){ dst[0]='\0'; return; }
@@ -81,7 +103,6 @@ static void json_escape(const char *src, char *dst, size_t dst_size){
         else if(c=='\r'){ dst[j++]='\\'; dst[j++]='r'; }
         else if(c=='\t'){ dst[j++]='\\'; dst[j++]='t'; }
         else if(c < 0x20){
-            // control char -> \u00XX
             j+= snprintf(dst+j, dst_size-j, "\\u%04x", c);
         } else {
             dst[j++]=c;
@@ -104,7 +125,6 @@ static void xml_escape_url(const char *src, char *dst, size_t dst_size){
     dst[j]='\0';
 }
 
-// CDATA aman: ganti ]]> jadi ]]><![CDATA[>
 static void write_cdata(FILE *f, const char *s){
     if(!s) return;
     for(size_t i=0; s[i]; ){
@@ -126,7 +146,6 @@ static const char* get_site_url(CAXObject *global_data){
         if(site) url = cax_object_get_string(site, "url");
         if(!url) url = cax_object_get_pointer(global_data, "metadata") ? NULL : NULL;
     }
-    // fallback dari data_manager structure
     CAXObject *meta = cax_object_get_pointer(global_data, "metadata");
     if(!url && meta){
         CAXObject *site = cax_object_get_pointer(meta, "site");
@@ -174,7 +193,6 @@ static void cax_generate_feeds(CAXArray *all_items, CAXObject *global_data){
     size_t sl = strlen(site_url);
     if(sl>0 && site_url[sl-1]=='/') site_url[sl-1]='\0';
 
-    // waktu build
     time_t now = time(NULL);
     struct tm *gmt = gmtime(&now);
     char now_rfc822[128];
@@ -182,15 +200,10 @@ static void cax_generate_feeds(CAXArray *all_items, CAXObject *global_data){
     strftime(now_rfc822, sizeof(now_rfc822), "%a, %d %b %Y %H:%M:%S GMT", gmt);
     strftime(now_iso, sizeof(now_iso), "%Y-%m-%dT%H:%M:%SZ", gmt);
 
-    // ============ RSS / feed.xml ============
     FILE *rss = fopen("site/feed.xml", "w");
     if(!rss) rss = fopen("site/rss.xml","w");
-    else {
-        // tulis 2 file dengan konten sama, kita akan copy nanti
-    }
     if(!rss) return;
 
-    // header
     fprintf(rss, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     fprintf(rss, "<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n<channel>\n");
     fprintf(rss, "<title><![CDATA["); write_cdata(rss, site_title_raw); fprintf(rss, "]]></title>\n");
@@ -236,7 +249,6 @@ static void cax_generate_feeds(CAXArray *all_items, CAXObject *global_data){
     fprintf(rss, "</channel>\n</rss>\n");
     fclose(rss);
 
-    // copy feed.xml ke rss.xml biar dua-duanya ada
     {
         char *content = cax_read_file("site/feed.xml");
         if(!content) content = cax_read_file("site/rss.xml");
@@ -247,7 +259,6 @@ static void cax_generate_feeds(CAXArray *all_items, CAXObject *global_data){
         }
     }
 
-    // ============ JSON Feed 1.1 ============
     FILE *jf = fopen("site/feed.json","w");
     if(!jf) return;
     char esc_title[2048], esc_desc[4096];
@@ -416,10 +427,19 @@ static void process_collection_dir(const char *dir_path, const char *coll_name, 
         cax_object_set_string(item_obj, "url", url_buf);
         cax_object_set_string(item_obj, "permalink", url_buf);
         cax_object_set_string(item_obj, "slug", slug);
+        if (!cax_object_get_string(item_obj, "date")) {
+            struct stat st;
+            if (stat(full_path, &st) == 0) {
+                char mt[32]; snprintf(mt, sizeof(mt), "%lld", (long long)st.st_mtime);
+                cax_object_set_string(item_obj, "mtime", mt);
+            }
+        }
         cax_array_add(master_array, item_obj);
         cax_frontmatter_free(doc);
     }
     closedir(dir);
+    if (master_array->count > 1)
+        qsort(master_array->items, master_array->count, sizeof(CAXObject*), cmp_by_date_desc);
 }
 static void copy_all_data_to_context(CAXObject *src, CAXObject *dst) {
     if (!src ||!dst) return;
@@ -647,6 +667,13 @@ void cax_builder_run(void) {
                             else snprintf(url_buf, sizeof(url_buf), "/%s/", rel_name);
                             cax_object_set_string(ctx, "url", url_buf);
                             cax_object_set_string(ctx, "permalink", url_buf);
+                            if (!cax_object_get_string(ctx, "date")) {
+                                struct stat st;
+                                if (stat(file_path, &st) == 0) {
+                                    char mt[32]; snprintf(mt, sizeof(mt), "%lld", (long long)st.st_mtime);
+                                    cax_object_set_string(ctx, "mtime", mt);
+                                }
+                            }
                             CAXObject *root_page_item = copy_metadata_object(ctx);
                             cax_array_add(all_collections_master, root_page_item);
                             char *html_body = cax_markdown_to_html(doc->body);
@@ -677,10 +704,10 @@ void cax_builder_run(void) {
         }
         closedir(content_dir);
     }
+    if (all_collections_master->count > 1)
+        qsort(all_collections_master->items, all_collections_master->count, sizeof(CAXObject*), cmp_by_date_desc);
     cax_tags_generate(all_collections_master, "site", global_data);
     cax_sitemap_generate_full(all_collections_master, global_data, "site", pagination_controllers);
-
-    // ===== FIX FEED UNTUK OPEN SOURCE =====
     cax_generate_feeds(all_collections_master, global_data);
 
     for (int i = 0; i < all_collections_master->count; i++) if (all_collections_master->items[i]) cax_object_free(all_collections_master->items[i]);
